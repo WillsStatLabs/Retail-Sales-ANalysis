@@ -1,0 +1,255 @@
+---
+title: "Retail"
+format: html
+---
+
+
+```{r setup}
+
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  tidy = TRUE,
+  cache=FALSE
+  
+)
+
+```
+# The Task
+
+1. Predict the department-wide sales for each store for the following year
+2. Model the effects of markdowns on holiday weeks
+3. Provide recommended actions based on the insights drawn, with prioritization placed on largest business impact
+
+
+
+# Packages
+
+```{r packages}
+library(tidyverse)
+library(scales)
+library(lubridate)
+library(readxl)
+
+library(caret)
+```
+
+# Data
+
+## Reading
+```{r reading}
+
+sales <- read_excel("sales data-set.xlsx", 
+    sheet = "SalesDT")
+
+features <- read_excel("Features data set.xlsx", 
+    sheet = "Features data set")
+
+stores <- read_excel("stores data-set.xlsx")
+
+
+head(sales)
+head(features)
+head(stores)
+
+library(forecast)
+
+```
+
+## Data cleaning
+```{r cleaning}
+sales <- sales |> 
+  mutate(
+    Date=ymd(Date),
+    Store=as_factor(Store),
+    Dept=as_factor(Dept)
+  )
+# Data is already sorted by Dates
+sales_date <- aggregate(list("Weekly_Sales" = sales$Weekly_Sales), 
+                        by= list("Date" = sales$Date), FUN=sum, na.rm = TRUE)
+
+                        head(sales_date)
+# Converting sales into Millions
+sales_date$Weekly_Sales <- as.integer(sales_date$Weekly_Sales / 1000000)
+
+
+features <- features |> 
+  mutate(
+    Store=as_factor(Store)
+  )
+
+ features_date <- aggregate(list(
+                            "Temperature" = features$Temperature, 
+                            "Fuel_Price" = features$Fuel_Price,
+                             "CPI" = as.numeric(features$CPI), 
+                             "Unemployment" = as.numeric(features$Unemployment)),
+                              by = list("Date" = features$Date), 
+                              FUN=mean, na.rm = TRUE)
+
+stores <- stores |> 
+  mutate(
+    Store=as_factor(Store),
+    Type=as_factor(Type)
+    
+  ) 
+
+  sales_stores <- aggregate(list("Weekly_Sales" = sales$Weekly_Sales), 
+                        by= list("Date" = sales$Date,
+                            "Store"=sales$Store), FUN=sum, na.rm = TRUE)
+
+                        head(sales_stores)
+
+```
+
+
+# Merging features and sales
+
+```{r}
+sales_new <- sales_date %>% 
+left_join(features_date, by="Date")
+
+sales_new_stores <- sales_stores %>% 
+left_join(features_date, by="Date") %>% 
+left_join(stores, by="Store")
+
+head(sales_new_stores)
+```
+
+
+
+# EDA
+
+- Total weekly sales
+
+
+Stores
+
+- Top stores
+- Largest stores
+- Sales vs size
+
+
+
+Type
+- Top store type by sales
+- Largest store type by size
+- Sales vs size
+
+## Weekly sales
+```{r}
+#| fig-align: center
+#| fig-cap: Weekly Sales
+sales_new |> 
+  ggplot(aes(Weekly_Sales))+
+  geom_density()
+
+
+```
+
+```{r}
+#| fig-align: center
+#| fig-cap: Weekly Sales
+sales_new |> 
+  ggplot(aes(Date, Weekly_Sales))+
+  geom_line()
+
+```
+
+Majority of the weekly sales lies between 40M and 50M
+
+## Fuel Price
+```{r}
+#| fig-align: center
+#| fig-cap: Weekly Sales
+sales_new |> 
+  ggplot(aes(Fuel_Price))+
+  geom_density()
+
+```
+
+
+```{r}
+#| fig-align: center
+#| fig-cap: Weekly Sales
+sales_new |> 
+  ggplot(aes(Date, Fuel_Price))+
+  geom_line()
+
+```
+
+
+## Fuel Price
+```{r}
+#| fig-align: center
+#| fig-cap: Weekly Sales
+sales_new |> 
+  ggplot(aes(Unemployment))+
+  geom_density()
+
+```
+
+
+
+## Weekly Sales Vs Fuel Price
+
+```{r}
+#| fig-align: center
+#| fig-cap: Weekly Sales
+sales_new |> 
+  ggplot(aes(Weekly_Sales, Fuel_Price))+
+  geom_point()+
+  scale_x_log10()
+
+```
+
+There seems to be now clear linear pattern of fuel against weekly sales. However we can ater investigate clustering.
+
+## Sales against Unemployment overtime
+
+```{r}
+#| fig-align: center
+#| fig-cap: Weekly Sales
+sales_new |> 
+mutate(Unemployment=as_factor(Unemployment)) %>% 
+group_by(Unemployment) %>% 
+  ggplot(aes(Date, Weekly_Sales, color=Unemployment))+
+  geom_line().
+
+```
+
+## Yearly Sales
+```{r}
+sales_new %>% 
+mutate(Year=as_factor(year(Date))) %>% 
+group_by(Year) %>% 
+summarise(
+  Sales=sum(Weekly_Sales)
+) %>% 
+ggplot(aes(Year, Sales, fill=Year))+
+geom_bar(stat="identity")+
+theme(
+  legend.position = "none"
+)
+```
+
+
+
+```{r}
+
+
+# Convert your data into a time series object
+sales_ts <- ts(sales$Sales, frequency = 52)
+
+# Fit an ARIMA model to your data
+fit <- auto.arima(sales_ts)
+
+# Generate forecasts for the next 3 months
+forecast <- forecast(fit, h = 12)
+
+# Print your forecasts
+print(forecast)
+
+```
+
+
